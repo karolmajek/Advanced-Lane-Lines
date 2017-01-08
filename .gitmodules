@@ -1,0 +1,3 @@
+[submodule "CarND-Advanced-Lane-Lines"]
+	path = CarND-Advanced-Lane-Lines
+	url = https://github.com/udacity/CarND-Advanced-Lane-Lines.git
