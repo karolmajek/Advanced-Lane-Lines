@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+from sklearn.cluster import KMeans
 import matplotlib.pyplot as plt
 import numpy as np
 import cv2
@@ -52,8 +53,24 @@ def pipeline(img, s_thresh=(170, 255), sx_thresh=(20, 100)):
     # Stack each channel
     # Note color_binary[:, :, 0] is all 0s, effectively an all black image. It might
     # be beneficial to replace this channel with something else.
-    color_binary = np.dstack(( np.zeros_like(sxbinary), sxbinary, s_binary))
-    return color_binary
+    # color_binary = np.dstack(( np.zeros_like(sxbinary), sxbinary, s_binary))
+    # return color_binary
+    return sxbinary+s_binary
+
+def getCenters(histogram,threshold=10):
+    x_val_hist=[i for i,x in enumerate(histogram) if x>threshold]
+    kmeans = KMeans(n_clusters=2, random_state=0).fit(np.array(x_val_hist).reshape(-1,1))
+    return kmeans.cluster_centers_
+
+def findLinePoints(image,centers):
+    points=([],[])
+    for i,c in enumerate(centers):
+        for y in range(image.shape[0]):
+            for x in range(int(c[0])-30,int(c[0])+30):
+                if x<image.shape[1] and y<image.shape[0]:
+                    if image[y][x]!=0:
+                        points[i].append((x,y))
+    return points
 
 def main():
     for im in images:
@@ -93,10 +110,63 @@ def main():
         # ax1.imshow(hls_binary)
         ax1.imshow(undist)
         ax1.set_title('Original Image', fontsize=50)
-        ax2.imshow(warped)
+        ax2.imshow(warped, cmap='gray')
         # ax2.imshow(hls_binary, cmap='gray')
         ax2.set_title('Thresholded S', fontsize=50)
         plt.subplots_adjust(left=0., right=1, top=0.9, bottom=0.)
+        plt.show()
+        histogram = np.sum(warped[warped.shape[0]/2:,:], axis=0)
+
+        centers=getCenters(histogram)
+        print(centers)
+        points=findLinePoints(warped,centers)
+        # print(points)
+        # print(histogram)
+        plt.plot(histogram)
+        plt.show()
+        # Generate some fake data to represent lane-line pixels
+        # yvals = np.linspace(0, 100, num=101)*7.2  # to cover same y-range as image
+        # leftx = np.array([200 + (elem**2)*4e-4 + np.random.randint(-50, high=51)
+        #                               for idx, elem in enumerate(yvals)])
+        # leftx = leftx[::-1]  # Reverse to match top-to-bottom in y
+        # rightx = np.array([900 + (elem**2)*4e-4 + np.random.randint(-50, high=51)
+        #                                 for idx, elem in enumerate(yvals)])
+        # rightx = rightx[::-1]  # Reverse to match top-to-bottom in y
+        # left_fit = np.polyfit(yvals, leftx, 2)
+        # left_fitx = left_fit[0]*yvals**2 + left_fit[1]*yvals + left_fit[2]
+        # right_fit = np.polyfit(yvals, rightx, 2)
+        # right_fitx = right_fit[0]*yvals**2 + right_fit[1]*yvals + right_fit[2]
+        # # Plot up the fake data
+        # plt.plot(leftx, yvals, 'o', color='red')
+        # plt.plot(rightx, yvals, 'o', color='blue')
+        # plt.xlim(0, 1280)
+        # plt.ylim(0, 720)
+        # plt.plot(left_fitx, yvals, color='green', linewidth=3)
+        # plt.plot(right_fitx, yvals, color='green', linewidth=3)
+        # plt.gca().invert_yaxis() # to visualize as we do the images
+        # plt.show()
+
+        leftx,lefty= zip(*points[0])
+        rightx,righty= zip(*points[1])
+
+        leftx=np.array(leftx)
+        lefty=np.array(lefty)
+        rightx=np.array(rightx)
+        righty=np.array(righty)
+        # Fit a second order polynomial to each fake lane line
+        left_fit = np.array(np.polyfit(lefty, leftx, 2))
+        left_fitx = np.array(left_fit[0]*lefty**2 + left_fit[1]*lefty + left_fit[2])
+        right_fit = np.array(np.polyfit(righty, rightx, 2))
+        right_fitx = np.array(right_fit[0]*righty**2 + right_fit[1]*righty + right_fit[2])
+
+        # Plot up the fake data
+        plt.plot(leftx, lefty, 'o', color='red')
+        plt.plot(rightx, righty, 'o', color='blue')
+        plt.xlim(0, 1280)
+        plt.ylim(0, 720)
+        plt.plot(left_fitx, lefty, color='green', linewidth=3)
+        plt.plot(right_fitx, righty, color='green', linewidth=3)
+        plt.gca().invert_yaxis() # to visualize as we do the images
         plt.show()
         # return
 
