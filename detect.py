@@ -16,7 +16,7 @@ calib['dist']=np.array(calib['dist'])
 # print('Calibration mat:',calib['matrix'])
 
 images=glob.glob('CarND-Advanced-Lane-Lines/test_images/*.jpg')
-images=[images[3]]
+# images=[images[3]]
 
 def hls_select(img, thresh=(0, 255)):
     # 1) Convert to HLS color space
@@ -104,7 +104,7 @@ def main():
         cv2.polylines(undist,[pts],True,(0,0,255))
 
 
-        f, (ax1, ax2) = plt.subplots(1, 2, figsize=(24, 9))
+        f, ((ax1, ax2),(ax3,ax4)) = plt.subplots(2, 2, figsize=(16, 9))
         f.tight_layout()
         # ax1.imshow(hls_binary, cmap='gray')
         # ax1.imshow(hls_binary)
@@ -114,7 +114,7 @@ def main():
         # ax2.imshow(hls_binary, cmap='gray')
         ax2.set_title('Thresholded S', fontsize=50)
         plt.subplots_adjust(left=0., right=1, top=0.9, bottom=0.)
-        plt.show()
+        # plt.show()
         histogram = np.sum(warped[warped.shape[0]/2:,:], axis=0)
 
         centers=getCenters(histogram)
@@ -122,8 +122,8 @@ def main():
         points=findLinePoints(warped,centers)
         # print(points)
         # print(histogram)
-        plt.plot(histogram)
-        plt.show()
+        ax3.plot(histogram)
+        # plt.show()
         # Generate some fake data to represent lane-line pixels
         # yvals = np.linspace(0, 100, num=101)*7.2  # to cover same y-range as image
         # leftx = np.array([200 + (elem**2)*4e-4 + np.random.randint(-50, high=51)
@@ -159,6 +159,8 @@ def main():
         right_fit = np.array(np.polyfit(righty, rightx, 2))
         right_fitx = np.array(right_fit[0]*righty**2 + right_fit[1]*righty + right_fit[2])
 
+
+        plt.axes(ax4)
         # Plot up the fake data
         plt.plot(leftx, lefty, 'o', color='red')
         plt.plot(rightx, righty, 'o', color='blue')
