@@ -57,19 +57,43 @@ def pipeline(img, s_thresh=(170, 255), sx_thresh=(20, 100)):
     # return color_binary
     return sxbinary+s_binary
 
-def getCenters(histogram,threshold=10):
+def getCenters(warped,threshold=10):
+    # for line in warped:
+    #     if np.count_nonzero(line)>10:
+    #         x_val_hist=[i for i,x in enumerate(line) if x>0]
+    #         kmeans = KMeans(n_clusters=2, random_state=0).fit(np.array(x_val_hist).reshape(-1,1))
+    #         means=list(kmeans.cluster_centers_.reshape(2))
+    #         if np.abs(means[0]-means[1])>300:
+    #             print(np.count_nonzero(line),list(kmeans.cluster_centers_.reshape(2)))
+    histogram = np.sum(warped[warped.shape[0]/2:,:], axis=0)
+
     x_val_hist=[i for i,x in enumerate(histogram) if x>threshold]
     kmeans = KMeans(n_clusters=2, random_state=0).fit(np.array(x_val_hist).reshape(-1,1))
-    return kmeans.cluster_centers_
+    return histogram,kmeans.cluster_centers_
 
-def findLinePoints(image,centers):
+def findLinePoints(image,centers,fit=None):
     points=([],[])
-    for i,c in enumerate(centers):
-        for y in range(image.shape[0]):
-            for x in range(int(c[0])-30,int(c[0])+30):
-                if x<image.shape[1] and y<image.shape[0]:
-                    if image[y][x]!=0:
-                        points[i].append((x,y))
+    if fit is None:
+        for i,c in enumerate(centers):
+            for y in range(image.shape[0]):
+                for x in range(int(c[0])-100,int(c[0])+100):
+                    if x<image.shape[1] and y<image.shape[0]:
+                        if image[y][x]!=0:
+                            points[i].append((x,y))
+    else:
+        for yy,line in enumerate(image):
+            if np.count_nonzero(line)>10:
+                x_val_hist=[i for i,x in enumerate(line) if x>0]
+                kmeans = KMeans(n_clusters=2, random_state=0).fit(np.array(x_val_hist).reshape(-1,1))
+                means=list(kmeans.cluster_centers_.reshape(2))
+                if np.abs(means[0]-means[1])>300:
+                    print(np.count_nonzero(line),list(kmeans.cluster_centers_.reshape(2)))
+                    for i in list(kmeans.cluster_centers_.reshape(2)):
+                        if i<500:
+                            points[0].append((i,yy))
+                        else:
+                            points[1].append((i,yy))
+
     return points
 
 def main():
@@ -88,8 +112,9 @@ def main():
                 [0.84*undist.shape[1],undist.shape[0]]]
         src = np.float32(corners)
 
-        warped_size=(undist.shape[1],600)
-        offset=(warped_size[0]-warped_size[1])/2.0
+        # offset=(warped_size[0]-warped_size[1])/2.0
+        offset=100
+        warped_size=(600+2*offset,600)
         dst = np.float32([
                             [offset, warped_size[1]],
                             [offset, 0],
@@ -104,22 +129,23 @@ def main():
         cv2.polylines(undist,[pts],True,(0,0,255))
 
 
-        f, ((ax1, ax2),(ax3,ax4)) = plt.subplots(2, 2, figsize=(16, 9))
-        f.tight_layout()
+        f, ((ax1, ax2),(ax3,ax4)) = plt.subplots(2, 2, figsize=(16, 12))
+        # f.tight_layout()
         # ax1.imshow(hls_binary, cmap='gray')
         # ax1.imshow(hls_binary)
-        ax1.imshow(undist)
-        ax1.set_title('Original Image', fontsize=50)
+        ax1.imshow(undist[::2,::2,:])
+        # ax1.set_title('Original Image', fontsize=50)
         ax2.imshow(warped, cmap='gray')
         # ax2.imshow(hls_binary, cmap='gray')
-        ax2.set_title('Thresholded S', fontsize=50)
+        # ax2.set_title('Thresholded S', fontsize=50)
         plt.subplots_adjust(left=0., right=1, top=0.9, bottom=0.)
         # plt.show()
-        histogram = np.sum(warped[warped.shape[0]/2:,:], axis=0)
 
-        centers=getCenters(histogram)
-        print(centers)
-        points=findLinePoints(warped,centers)
+        histogram,centers=getCenters(warped)
+        print('Centers:',centers)
+        points=findLinePoints(warped,centers,1)
+        # for line in warped[warped.shape[0]/2:,:]:
+            # print(line)
         # print(points)
         # print(histogram)
         ax3.plot(histogram)
@@ -149,25 +175,27 @@ def main():
         leftx,lefty= zip(*points[0])
         rightx,righty= zip(*points[1])
 
+        all_y=np.array(list(range(warped.shape[0])))
+
         leftx=np.array(leftx)
         lefty=np.array(lefty)
         rightx=np.array(rightx)
         righty=np.array(righty)
         # Fit a second order polynomial to each fake lane line
         left_fit = np.array(np.polyfit(lefty, leftx, 2))
-        left_fitx = np.array(left_fit[0]*lefty**2 + left_fit[1]*lefty + left_fit[2])
+        left_fitx = np.array(left_fit[0]*all_y**2 + left_fit[1]*all_y + left_fit[2])
         right_fit = np.array(np.polyfit(righty, rightx, 2))
-        right_fitx = np.array(right_fit[0]*righty**2 + right_fit[1]*righty + right_fit[2])
+        right_fitx = np.array(right_fit[0]*all_y**2 + right_fit[1]*all_y + right_fit[2])
 
 
         plt.axes(ax4)
         # Plot up the fake data
         plt.plot(leftx, lefty, 'o', color='red')
         plt.plot(rightx, righty, 'o', color='blue')
-        plt.xlim(0, 1280)
-        plt.ylim(0, 720)
-        plt.plot(left_fitx, lefty, color='green', linewidth=3)
-        plt.plot(right_fitx, righty, color='green', linewidth=3)
+        # plt.xlim(0, warped.shape[1])
+        # plt.ylim(0, warped.shape[0])
+        plt.plot(left_fitx, all_y, color='green', linewidth=3)
+        plt.plot(right_fitx, all_y, color='green', linewidth=3)
         plt.gca().invert_yaxis() # to visualize as we do the images
         plt.show()
         # return
