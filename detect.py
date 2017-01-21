@@ -71,34 +71,56 @@ def getCenters(warped,threshold=10):
     kmeans = KMeans(n_clusters=2, random_state=0).fit(np.array(x_val_hist).reshape(-1,1))
     return histogram,kmeans.cluster_centers_
 
-def findLinePoints(image,centers,fit=None):
+# @profile
+def findLinePoints(image,centers=None,fit=None):
     points=([],[])
-    if fit is None:
-        for i,c in enumerate(centers):
-            for y in range(image.shape[0]):
-                for x in range(int(c[0])-100,int(c[0])+100):
-                    if x<image.shape[1] and y<image.shape[0]:
-                        if image[y][x]!=0:
-                            points[i].append((x,y))
-    else:
-        for yy,line in enumerate(image):
-            if np.count_nonzero(line)>10:
-                x_val_hist=[i for i,x in enumerate(line) if x>0]
-                kmeans = KMeans(n_clusters=2, random_state=0).fit(np.array(x_val_hist).reshape(-1,1))
-                means=list(kmeans.cluster_centers_.reshape(2))
-                if np.abs(means[0]-means[1])>300:
-                    print(np.count_nonzero(line),list(kmeans.cluster_centers_.reshape(2)))
-                    for i in list(kmeans.cluster_centers_.reshape(2)):
-                        if i<500:
-                            points[0].append((i,yy))
-                        else:
-                            points[1].append((i,yy))
+    # if fit is None:
+    #     for i,c in enumerate(centers):
+    #         for y in range(image.shape[0]):
+    #             for x in range(int(c[0])-100,int(c[0])+100):
+    #                 if x<image.shape[1] and y<image.shape[0]:
+    #                     if image[y][x]!=0:
+    #                         points[i].append((x,y))
+    # else:
+    for yy,line in enumerate(image):
+        if np.count_nonzero(line)>10:
+            x_val_hist=[i for i,x in enumerate(line) if x>0]
+            # x_val_hist=[x[0] for x in zip(list(range(len(line))),line) if x[1]>0]
+            # print(x_val_hist)
+            xmin=np.min(np.array(x_val_hist))
+            xmax=np.max(np.array(x_val_hist))
+            if np.abs(xmax-xmin)>300:
+                center=(xmin+xmax)/2.0
+                left=[(x,yy) for x in x_val_hist if x<center]
+                right=[(x,yy) for x in x_val_hist if x>=center]
+                for l in left:
+                    points[0].append(l)
+                for r in right:
+                    points[1].append(r)
+            # kmeans = KMeans(n_clusters=2, random_state=0).fit(np.array(x_val_hist).reshape(-1,1))
+            # means=list(kmeans.cluster_centers_.reshape(2))
+            # if np.abs(means[0]-means[1])>300:
+            #     print(np.count_nonzero(line),list(kmeans.cluster_centers_.reshape(2)))
+            #     for i in list(kmeans.cluster_centers_.reshape(2)):
+            #         if i<500:
+            #             points[0].append((i,yy))
+            #         else:
+            #             points[1].append((i,yy))
 
     return points
 
+# @profile
 def main():
-    for im in images:
-        img=cv2.imread(im)
+    cap = cv2.VideoCapture('CarND-Advanced-Lane-Lines/project_video.mp4')
+    # cap = cv2.VideoCapture('CarND-Advanced-Lane-Lines/harder_challenge_video.mp4')
+    # cap = cv2.VideoCapture('CarND-Advanced-Lane-Lines/challenge_video.mp4')
+
+    while(cap.isOpened()):
+        ret, img = cap.read()
+        if img is None:
+            break
+    # for im in images:
+        # img=cv2.imread(im)
         undist = cv2.undistort(img,calib['matrix'], calib['dist'], None,None)
         # cv2.imshow('undistorted',dst)
         # cv2.waitKey(0)
@@ -130,48 +152,52 @@ def main():
 
 
 
-        f, ((ax1, ax2,ax3),(ax3,ax4,ax5)) = plt.subplots(2, 3, figsize=(16, 12))
-        # f.tight_layout()
-        # ax1.imshow(hls_binary, cmap='gray')
-        # ax1.imshow(hls_binary)
-        ax1.imshow(undist[::2,::2,:])
-        # ax1.set_title('Original Image', fontsize=50)
-        ax2.imshow(warped, cmap='gray')
-        # ax2.imshow(hls_binary, cmap='gray')
-        # ax2.set_title('Thresholded S', fontsize=50)
-        plt.subplots_adjust(left=0., right=1, top=0.9, bottom=0.)
-        # plt.show()
+        # f, ((ax1, ax2,ax3),(ax3,ax4,ax5)) = plt.subplots(2, 3, figsize=(16, 12))
+        # # f.tight_layout()
+        # # ax1.imshow(hls_binary, cmap='gray')
+        # # ax1.imshow(hls_binary)
+        # ax1.imshow(undist[::2,::2,:])
+        # # ax1.set_title('Original Image', fontsize=50)
+        # ax2.imshow(warped, cmap='gray')
+        # # ax2.imshow(hls_binary, cmap='gray')
+        # # ax2.set_title('Thresholded S', fontsize=50)
+        # plt.subplots_adjust(left=0., right=1, top=0.9, bottom=0.)
+        # # plt.show()
 
-        histogram,centers=getCenters(warped)
-        print('Centers:',centers)
-        points=findLinePoints(warped,centers,1)
-        # for line in warped[warped.shape[0]/2:,:]:
-            # print(line)
-        # print(points)
-        # print(histogram)
-        ax3.plot(histogram)
-        # plt.show()
-        # Generate some fake data to represent lane-line pixels
-        # yvals = np.linspace(0, 100, num=101)*7.2  # to cover same y-range as image
-        # leftx = np.array([200 + (elem**2)*4e-4 + np.random.randint(-50, high=51)
-        #                               for idx, elem in enumerate(yvals)])
-        # leftx = leftx[::-1]  # Reverse to match top-to-bottom in y
-        # rightx = np.array([900 + (elem**2)*4e-4 + np.random.randint(-50, high=51)
-        #                                 for idx, elem in enumerate(yvals)])
-        # rightx = rightx[::-1]  # Reverse to match top-to-bottom in y
-        # left_fit = np.polyfit(yvals, leftx, 2)
-        # left_fitx = left_fit[0]*yvals**2 + left_fit[1]*yvals + left_fit[2]
-        # right_fit = np.polyfit(yvals, rightx, 2)
-        # right_fitx = right_fit[0]*yvals**2 + right_fit[1]*yvals + right_fit[2]
-        # # Plot up the fake data
-        # plt.plot(leftx, yvals, 'o', color='red')
-        # plt.plot(rightx, yvals, 'o', color='blue')
-        # plt.xlim(0, 1280)
-        # plt.ylim(0, 720)
-        # plt.plot(left_fitx, yvals, color='green', linewidth=3)
-        # plt.plot(right_fitx, yvals, color='green', linewidth=3)
-        # plt.gca().invert_yaxis() # to visualize as we do the images
-        # plt.show()
+        # histogram,centers=getCenters(warped)
+        # print('Centers:',centers)
+        # points=findLinePoints(warped,centers,1)
+        points=findLinePoints(warped)
+        # # for line in warped[warped.shape[0]/2:,:]:
+        #     # print(line)
+        # # print(points)
+        # # print(histogram)
+        # ax3.plot(histogram)
+        # # plt.show()
+        # # Generate some fake data to represent lane-line pixels
+        # # yvals = np.linspace(0, 100, num=101)*7.2  # to cover same y-range as image
+        # # leftx = np.array([200 + (elem**2)*4e-4 + np.random.randint(-50, high=51)
+        # #                               for idx, elem in enumerate(yvals)])
+        # # leftx = leftx[::-1]  # Reverse to match top-to-bottom in y
+        # # rightx = np.array([900 + (elem**2)*4e-4 + np.random.randint(-50, high=51)
+        # #                                 for idx, elem in enumerate(yvals)])
+        # # rightx = rightx[::-1]  # Reverse to match top-to-bottom in y
+        # # left_fit = np.polyfit(yvals, leftx, 2)
+        # # left_fitx = left_fit[0]*yvals**2 + left_fit[1]*yvals + left_fit[2]
+        # # right_fit = np.polyfit(yvals, rightx, 2)
+        # # right_fitx = right_fit[0]*yvals**2 + right_fit[1]*yvals + right_fit[2]
+        # # # Plot up the fake data
+        # # plt.plot(leftx, yvals, 'o', color='red')
+        # # plt.plot(rightx, yvals, 'o', color='blue')
+        # # plt.xlim(0, 1280)
+        # # plt.ylim(0, 720)
+        # # plt.plot(left_fitx, yvals, color='green', linewidth=3)
+        # # plt.plot(right_fitx, yvals, color='green', linewidth=3)
+        # # plt.gca().invert_yaxis() # to visualize as we do the images
+        # # plt.show()
+
+        if len(points[0]) == 0 or len(points[1])==0:
+            continue
 
         leftx,lefty= zip(*points[0])
         rightx,righty= zip(*points[1])
@@ -205,21 +231,24 @@ def main():
         newwarp = cv2.warpPerspective(color_warp, Minv, (img.shape[1], img.shape[0]))
         # Combine the result with the original image
         result = cv2.addWeighted(undist, 1, newwarp, 0.3, 0)
-        plt.axes(ax4)
-        plt.imshow(result)
+        # plt.axes(ax4)
+        # plt.imshow(result)
 
-        plt.axes(ax5)
-        # Plot up the fake data
-        plt.plot(leftx, lefty, 'o', color='red')
-        plt.plot(rightx, righty, 'o', color='blue')
-        # plt.xlim(0, warped.shape[1])
-        # plt.ylim(0, warped.shape[0])
-        plt.plot(left_fitx, all_y, color='green', linewidth=3)
-        plt.plot(right_fitx, all_y, color='green', linewidth=3)
-        plt.gca().invert_yaxis() # to visualize as we do the images
-        plt.show()
+        cv2.imshow('result',result)
+        cv2.waitKey(1)
+        # plt.axes(ax5)
+        # # Plot up the fake data
+        # plt.plot(leftx, lefty, 'o', color='red')
+        # plt.plot(rightx, righty, 'o', color='blue')
+        # # plt.xlim(0, warped.shape[1])
+        # # plt.ylim(0, warped.shape[0])
+        # plt.plot(left_fitx, all_y, color='green', linewidth=3)
+        # plt.plot(right_fitx, all_y, color='green', linewidth=3)
+        # plt.gca().invert_yaxis() # to visualize as we do the images
+        # plt.show()
         # return
-
+    cap.release()
+    cv2.destroyAllWindows()
 
 
 if __name__ == '__main__':
