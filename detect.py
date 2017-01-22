@@ -18,6 +18,30 @@ calib['dist']=np.array(calib['dist'])
 images=glob.glob('CarND-Advanced-Lane-Lines/test_images/*.jpg')
 # images=[images[3]]
 
+def region_of_interest(img, vertices):
+    """
+    Applies an image mask.
+
+    Only keeps the region of the image defined by the polygon
+    formed from `vertices`. The rest of the image is set to black.
+    """
+    #defining a blank mask to start with
+    mask = np.zeros_like(img)
+
+    #defining a 3 channel or 1 channel color to fill the mask with depending on the input image
+    if len(img.shape) > 2:
+        channel_count = img.shape[2]  # i.e. 3 or 4 depending on your image
+        ignore_mask_color = (255,) * channel_count
+    else:
+        ignore_mask_color = 255
+
+    #filling pixels inside the polygon defined by "vertices" with the fill color
+    cv2.fillPoly(mask, vertices, ignore_mask_color)
+
+    #returning the image only where mask pixels are nonzero
+    masked_image = cv2.bitwise_and(img, mask)
+    return masked_image
+
 def hls_select(img, thresh=(0, 255)):
     # 1) Convert to HLS color space
     hls = cv2.cvtColor(img, cv2.COLOR_RGB2HLS)
@@ -32,14 +56,22 @@ def hls_select(img, thresh=(0, 255)):
     return binary_output
 
 # Edit this function to create your own pipeline.
-def pipeline(img, s_thresh=(170, 255), sx_thresh=(20, 100)):
+def pipeline(img, s_thresh=(100, 200), sx_thresh=(60, 100)):
     img = np.copy(img)
     # Convert to HSV color space and separate the V channel
+    # hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HLS)
+    kernel = np.ones((5,5),np.float32)/25
+    img = cv2.filter2D(img,-1,kernel)
     hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HLS).astype(np.float)
-    l_channel = hsv[:,:,2]
-    s_channel = hsv[:,:,2]
+    l = hsv[:,:,1]
+    s = hsv[:,:,1]
+    h = hsv[:,:,0]
+
+
+
     # Sobel x
-    sobelx = cv2.Sobel(l_channel, cv2.CV_64F, 1, 0) # Take the derivative in x
+    # sobelx = cv2.Laplacian(l_channel, cv2.CV_64F) # Take the derivative in x
+    sobelx = cv2.Sobel(l, cv2.CV_64F, 1, 0) # Take the derivative in x
     abs_sobelx = np.absolute(sobelx) # Absolute x derivative to accentuate lines away from horizontal
     scaled_sobel = np.uint8(255*abs_sobelx/np.max(abs_sobelx))
 
@@ -48,14 +80,34 @@ def pipeline(img, s_thresh=(170, 255), sx_thresh=(20, 100)):
     sxbinary[(scaled_sobel >= sx_thresh[0]) & (scaled_sobel <= sx_thresh[1])] = 1
 
     # Threshold color channel
-    s_binary = np.zeros_like(s_channel)
-    s_binary[(s_channel >= s_thresh[0]) & (s_channel <= s_thresh[1])] = 1
+    # lap = cv2.Laplacian(h, cv2.CV_64F) # Take the derivative in x
+    # abs_lap = np.absolute(lap) # Absolute x derivative to accentuate lines away from horizontal
+    # scaled_lap = np.uint8(255*abs_lap/np.max(abs_lap))
+    s_binary = np.zeros_like(h)
+    s_binary[(h >= s_thresh[0]) & (h <= s_thresh[1])] = 1
+
+    # s_binary = np.zeros_like(scaled_lap)
+    # s_binary[(scaled_lap >= s_thresh[0]) & (scaled_lap <= s_thresh[1])] = 1
+
     # Stack each channel
     # Note color_binary[:, :, 0] is all 0s, effectively an all black image. It might
     # be beneficial to replace this channel with something else.
     # color_binary = np.dstack(( np.zeros_like(sxbinary), sxbinary, s_binary))
     # return color_binary
-    return sxbinary+s_binary
+
+    result=sxbinary+s_binary
+    vertices=np.array([[[0,result.shape[0]],[result.shape[1],result.shape[0]],[result.shape[1]*0.5,result.shape[0]*0.55]]],dtype=np.int32)
+    result=region_of_interest(result*255, vertices)
+    # result[0:0.7*result.shape[0],:]=0
+
+    # cv2.imshow('scaled_sobel',scaled_sobel)
+    # cv2.imshow('s_binary',s_binary*255)
+    # cv2.imshow('sx_binary',sxbinary*255)
+    cv2.imshow('sxbinary+s_binary',result)
+    # cv2.imshow('h',h)
+    # cv2.imshow('sxbinary+s_binary',sxbinary+s_binary)
+    # cv2.waitKey(1)
+    return result/255.0
 
 def getCenters(warped,threshold=10):
     # for line in warped:
@@ -84,7 +136,13 @@ def findLinePoints(image,centers=None,fit=None):
     # else:
     for yy,line in enumerate(image):
         if np.count_nonzero(line)>10:
-            x_val_hist=[i for i,x in enumerate(line) if x>0]
+            x_val_hist=[]
+            counter=0
+            for x in line:
+                if x>0:
+                    x_val_hist.append(counter)
+                counter=counter+1
+            # x_val_hist=[i for i,x in enumerate(line) if x>0]
             # x_val_hist=[x[0] for x in zip(list(range(len(line))),line) if x[1]>0]
             # print(x_val_hist)
             xmin=np.min(np.array(x_val_hist))
@@ -109,24 +167,23 @@ def findLinePoints(image,centers=None,fit=None):
 
     return points
 
-# @profile
 def main():
     cap = cv2.VideoCapture('CarND-Advanced-Lane-Lines/project_video.mp4')
-    # cap = cv2.VideoCapture('CarND-Advanced-Lane-Lines/harder_challenge_video.mp4')
     # cap = cv2.VideoCapture('CarND-Advanced-Lane-Lines/challenge_video.mp4')
+    # cap = cv2.VideoCapture('CarND-Advanced-Lane-Lines/harder_challenge_video.mp4')
 
     while(cap.isOpened()):
         ret, img = cap.read()
         if img is None:
             break
     # for im in images:
-        # img=cv2.imread(im)
+    #     img=cv2.imread(im)
         undist = cv2.undistort(img,calib['matrix'], calib['dist'], None,None)
         # cv2.imshow('undistorted',dst)
         # cv2.waitKey(0)
 
         # hls_binary = hls_select(dst, thresh=(150, 250))
-        hls_binary=pipeline(undist)
+        hls_binary=pipeline(undist, s_thresh=(50,90))
 
         corners=[[0.16*undist.shape[1],undist.shape[0]],
                 [0.45*undist.shape[1],0.63*undist.shape[0]],
@@ -183,7 +240,7 @@ def main():
         # #                                 for idx, elem in enumerate(yvals)])
         # # rightx = rightx[::-1]  # Reverse to match top-to-bottom in y
         # # left_fit = np.polyfit(yvals, leftx, 2)
-        # # left_fitx = left_fit[0]*yvals**2 + left_fit[1]*yvals + left_fit[2]
+        # 1# left_fitx = left_fit[0]*yvals**2 + left_fit[1]*yvals + left_fit[2]
         # # right_fit = np.polyfit(yvals, rightx, 2)
         # # right_fitx = right_fit[0]*yvals**2 + right_fit[1]*yvals + right_fit[2]
         # # # Plot up the fake data
@@ -234,8 +291,11 @@ def main():
         # plt.axes(ax4)
         # plt.imshow(result)
 
+
         cv2.imshow('result',result)
         cv2.waitKey(1)
+
+
         # plt.axes(ax5)
         # # Plot up the fake data
         # plt.plot(leftx, lefty, 'o', color='red')
