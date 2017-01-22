@@ -292,6 +292,20 @@ def main():
         # plt.imshow(result)
 
 
+
+        # Define y-value where we want radius of curvature
+        # I'll choose the maximum y-value, corresponding to the bottom of the image
+        y_eval = np.max(all_y)
+        left_curverad = ((1 + (2*left_fit[0]*y_eval + left_fit[1])**2)**1.5) \
+                                     /np.absolute(2*left_fit[0])
+        right_curverad = ((1 + (2*right_fit[0]*y_eval + right_fit[1])**2)**1.5) \
+                                        /np.absolute(2*right_fit[0])
+        print(left_curverad, right_curverad)
+
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        result=cv2.putText(result,'%.1f %.1f'%(left_curverad, right_curverad),(50,50), font, 1,(255,255,255),2,cv2.LINE_AA)
+
+
         cv2.imshow('result',result)
         cv2.waitKey(1)
 
