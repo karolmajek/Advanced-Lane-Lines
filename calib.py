@@ -45,6 +45,6 @@ result['matrix']=np.array(mtx).tolist()
 result['dist']=np.array(dist).tolist()
 result['rvecs']=np.array(rvecs).tolist()
 result['tvecs']=np.array(tvecs).tolist()
-# print(result)
+
 with open('calib.json', 'w') as f:
     json.dump(result, f, indent=2, sort_keys=True)
