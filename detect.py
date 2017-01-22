@@ -167,7 +167,12 @@ def findLinePoints(image,centers=None,fit=None):
 
     return points
 
+
 def main():
+    is_distortion_saved=False
+
+    font = cv2.FONT_HERSHEY_SIMPLEX
+
     cap = cv2.VideoCapture('CarND-Advanced-Lane-Lines/project_video.mp4')
     # cap = cv2.VideoCapture('CarND-Advanced-Lane-Lines/challenge_video.mp4')
     # cap = cv2.VideoCapture('CarND-Advanced-Lane-Lines/harder_challenge_video.mp4')
@@ -181,6 +186,15 @@ def main():
         undist = cv2.undistort(img,calib['matrix'], calib['dist'], None,None)
         # cv2.imshow('undistorted',dst)
         # cv2.waitKey(0)
+
+        #Save before and after undistortion
+        if not is_distortion_saved:
+            dist_before_after=np.concatenate((img,undist), axis=1)
+            dist_before_after=cv2.putText(dist_before_after,'Distorted',(50,50), font, 1,(255,255,255),2,cv2.LINE_AA)
+            dist_before_after=cv2.putText(dist_before_after,'Undistorted',(50+img.shape[1],50), font, 1,(255,255,255),2,cv2.LINE_AA)
+
+            cv2.imwrite('images/distortion.jpg',dist_before_after)
+            is_distortion_saved=True
 
         # hls_binary = hls_select(dst, thresh=(150, 250))
         hls_binary=pipeline(undist, s_thresh=(50,90))
@@ -302,7 +316,6 @@ def main():
                                         /np.absolute(2*right_fit[0])
         print(left_curverad, right_curverad)
 
-        font = cv2.FONT_HERSHEY_SIMPLEX
         result=cv2.putText(result,'%.1f %.1f'%(left_curverad, right_curverad),(50,50), font, 1,(255,255,255),2,cv2.LINE_AA)
 
 

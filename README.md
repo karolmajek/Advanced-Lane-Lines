@@ -82,6 +82,10 @@ with open('calib.json', 'w') as f:
 
 ### Distortion correction
 
+Image before and after distortion correction.
+
+![Distortion correction](images/distortion.jpg)
+
 ### Binarization
 
 ### Perspective transform
