@@ -24,8 +24,6 @@ class LaneDetector:
     is_distortion_saved=False
     font = cv2.FONT_HERSHEY_SIMPLEX
 
-
-
     def mask_lane_lines(self,img, s_thresh=(100, 200), sx_thresh=(60, 100)):
         img = np.copy(img)
 
@@ -41,9 +39,9 @@ class LaneDetector:
         img_wht = cv2.cvtColor(hsv, cv2.COLOR_YUV2BGR)
         img_ylw = cv2.cvtColor(img_wht, cv2.COLOR_BGR2HSV)
         img_wht=img_wht[:,:,1]
-        img_wht[img_wht<255]=0
+        img_wht[img_wht<250]=0
 
-        mask_wht = cv2.inRange(img_wht, 255, 255)
+        mask_wht = cv2.inRange(img_wht, 250, 255)
 
         lower_ylw = np.array([60,135,50])
         upper_ylw = np.array([180,155,155])
@@ -68,24 +66,46 @@ class LaneDetector:
 
     def findLinePoints(self,image):
         points=([],[])
-        for yy,line in enumerate(image):
-            if np.count_nonzero(line)>10:
-                x_val_hist=[]
-                counter=0
-                for x in line:
-                    if x>0:
-                        x_val_hist.append(counter)
-                    counter=counter+1
-                xmin=np.min(np.array(x_val_hist))
-                xmax=np.max(np.array(x_val_hist))
-                if np.abs(xmax-xmin)>300:
-                    center=(xmin+xmax)/2.0
-                    left=[(x,yy) for x in x_val_hist if x<center]
-                    right=[(x,yy) for x in x_val_hist if x>=center]
-                    for l in left:
-                        points[0].append(l)
-                    for r in right:
-                        points[1].append(r)
+        shape=image.shape
+        img=cv2.resize(image,(shape[1],int(shape[0])),fx=0,fy=0)
+        red=np.zeros_like(img)
+        green=np.zeros_like(img)
+        blue=np.zeros_like(img)
+
+        center=int(shape[1]/2)
+        print(shape)
+        for yy,line in list(enumerate(image))[::-1]:
+            x_val_hist=[]
+            counter=0
+            for x in line:
+                if x>0:
+                    x_val_hist.append(counter)
+                counter=counter+1
+            if len(x_val_hist)>0:
+                # xmin=np.min(np.array(x_val_hist))
+                # xmax=np.max(np.array(x_val_hist))
+                # if np.abs(xmax-xmin)>100:
+                cv2.circle(green,(int(center),yy),1,(255,255,255))
+
+                left=[(x,yy) for x in x_val_hist if x<center]
+                right=[(x,yy) for x in x_val_hist if x>=center]
+                if len(left)>0:
+                    l=np.mean(np.array(left),axis=0)
+                    l=(l[0],l[1])
+                    print('center',center,'yy',yy,'l',l[0])
+                    center=l[0]+int(shape[1]*0.2)
+                    # new_center=l[0]+int(shape[1]*0.2)
+                    # center=(center+new_center)*0.5
+                    cv2.circle(red,(int(l[0]),int(l[1])),1,(255,255,255))
+                    points[0].append(l)
+                if len(right)>0:
+                    r=np.mean(np.array(right),axis=0)
+                    r=(r[0],r[1])
+                    # print(r)
+                    cv2.circle(blue,(int(r[0]),int(r[1])),1,(255,255,255))
+                    points[1].append(r)
+        img=cv2.resize(np.dstack((blue,green,red)),(shape[1],int(shape[0])),fx=0,fy=0)
+        cv2.imshow('small',img)
         return points
 
     def findLinePointsFast(self,image):
@@ -230,7 +250,7 @@ class LaneDetector:
         # pts = pts.reshape((-1,1,2))
         # cv2.polylines(undist,[pts],True,(0,0,255))
 
-        offset=200
+        offset=100
         warped_size=(300+2*offset,300)
         dst = np.float32([
                             [offset, warped_size[1]],
@@ -257,8 +277,8 @@ class LaneDetector:
 
     def processNextImage(self,img):
         undist=self.undistort(img)
-        # undist=self.removeTopBottom(undist)
-        warped=self.unwarp(undist)
+        undist_masked=self.removeTopBottom(undist)
+        warped=self.unwarp(undist_masked)
         # warped=self.removeNoise(warped)
         points=self.findLinePointsFast(warped)
 
@@ -340,18 +360,20 @@ class LaneDetector:
                                         /np.absolute(2*self.right_fit[0])
         # print(left_curverad, right_curverad)
 
-        result=cv2.putText(result,'%.1f %.1f'%(left_curverad, right_curverad),(50,50), self.font, 1,(255,255,255),2,cv2.LINE_AA)
+        result=cv2.putText(result,'Curvature left: %.1f '%(left_curverad),(50,50), self.font, 1,(255,255,255),2,cv2.LINE_AA)
+        result=cv2.putText(result,'Curvature right: %.1f '%(right_curverad),(50,100), self.font, 1,(255,255,255),2,cv2.LINE_AA)
 
 
         return result
 
     def processSingleImage(self,img):
+        print(img.shape)
         undist=self.undistort(img)
         self.roi_corners=[[0.16*undist.shape[1],undist.shape[0]],
                     [0.45*undist.shape[1],0.63*undist.shape[0]],
                     [0.55*undist.shape[1],0.63*undist.shape[0]],
                     [0.84*undist.shape[1],undist.shape[0]]]
-        # undist=self.removeTopBottom(undist)
+        undist_masked=self.removeTopBottom(undist)
         #Save before and after undistortion
         if not self.is_distortion_saved:
             dist_before_after=np.concatenate((img,undist), axis=1)
@@ -361,10 +383,11 @@ class LaneDetector:
             cv2.imwrite('images/distortion.jpg',dist_before_after)
             self.is_distortion_saved=True
 
-        warped=self.unwarp(undist)
+        warped=self.unwarp(undist_masked)
         # warped=self.removeNoise(warped)
         points=self.findLinePoints(warped)
-
+        print(points[0])
+        print(points[1])
         cv2.imshow('warped',warped)
 
 
@@ -444,9 +467,10 @@ class LaneDetector:
                                      /np.absolute(2*self.left_fit[0])
         right_curverad = ((1 + (2*self.right_fit[0]*y_eval + self.right_fit[1])**2)**1.5) \
                                         /np.absolute(2*self.right_fit[0])
-        # print(left_curverad, right_curverad)
+        print(left_curverad, right_curverad)
 
-        result=cv2.putText(result,'%.1f %.1f'%(left_curverad, right_curverad),(50,50), self.font, 1,(255,255,255),2,cv2.LINE_AA)
+        result=cv2.putText(result,'Curvature left: %.1f '%(left_curverad),(50,50), self.font, 1,(255,255,255),2,cv2.LINE_AA)
+        result=cv2.putText(result,'Curvature right: %.1f '%(right_curverad),(50,100), self.font, 1,(255,255,255),2,cv2.LINE_AA)
 
 
         return result
