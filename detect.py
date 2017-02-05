@@ -225,7 +225,7 @@ class LaneDetector:
         res[0:int(self.roi_corners[1][1]),:,:]=0
         return res
 
-    def computeAndShow(self,img):
+    def computeAndShow(self,img,warped):
         '''
         Compute parameters:
         - left line curvature
@@ -238,7 +238,7 @@ class LaneDetector:
         y_eval = np.max(self.all_y)
 
         # Define conversions in x and y from pixels space to meters
-        ym_per_pix = 30/720 # meters per pixel in y dimension
+        ym_per_pix = 60/720 # meters per pixel in y dimension
         xm_per_pix = 3.7/700 # meters per pixel in x dimension
 
         # Fit new polynomials to x,y in world space
@@ -250,14 +250,14 @@ class LaneDetector:
         self.right_curverad = ((1 + (2*right_fit_cr[0]*y_eval*ym_per_pix + right_fit_cr[1])**2)**1.5) / np.absolute(2*right_fit_cr[0])
 
         #Distance from center
-        img_center=img.shape[1]/2
-        lane_center=self.left_fitx[-1]+self.right_fitx[-1]
+        img_center=warped.shape[1]/2
+        lane_center=(self.left_fitx[-1]+self.right_fitx[-1])*0.5
         diff=lane_center-img_center
         self.diffm=diff*xm_per_pix
 
         img=cv2.putText(img,'Curvature left: %.1f m'%(self.left_curverad),(50,50), self.font, 1,(255,255,255),2,cv2.LINE_AA)
         img=cv2.putText(img,'Curvature right: %.1f m'%(self.right_curverad),(50,100), self.font, 1,(255,255,255),2,cv2.LINE_AA)
-        img=cv2.putText(img,'Dist from center: %.1f m'%(self.diffm),(50,150), self.font, 1,(255,255,255),2,cv2.LINE_AA)
+        img=cv2.putText(img,'Dist from center: %.2f m'%(self.diffm),(50,150), self.font, 1,(255,255,255),2,cv2.LINE_AA)
 
     def fitAndShow(self,warped,undist,points):
         '''
@@ -334,7 +334,7 @@ class LaneDetector:
         points=self.findLinePointsFast(warped)
         # cv2.imshow('warped',warped)
         result,_ = self.fitAndShow(warped,undist,points)
-        self.computeAndShow(result)
+        self.computeAndShow(result,warped)
 
         return result
 
@@ -386,7 +386,7 @@ class LaneDetector:
             return img
 
         result,_ = self.fitAndShow(warped,undist,points)
-        self.computeAndShow(result)
+        self.computeAndShow(result,warped)
 
         return result
 
