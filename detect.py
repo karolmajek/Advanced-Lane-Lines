@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-from sklearn.cluster import KMeans
+from collections import deque
 import matplotlib.pyplot as plt
 import numpy as np
 import cv2
@@ -20,6 +20,13 @@ class LaneDetector:
     is_distortion_saved=False
     font = cv2.FONT_HERSHEY_SIMPLEX
 
+    N_frames=25
+    left_fit_deque=deque()
+    right_fit_deque=deque()
+
+    retry_count=25
+    retry_counter=0
+
     def mask_lane_lines(self,img):
         '''
         Method masks lane lines.
@@ -36,18 +43,21 @@ class LaneDetector:
         img_wht = cv2.cvtColor(yuv, cv2.COLOR_YUV2BGR)
 
         #Compute white mask
-        img_ylw = cv2.cvtColor(img_wht, cv2.COLOR_BGR2HSV)
         img_wht=img_wht[:,:,1]
         img_wht[img_wht<250]=0
         mask_wht = cv2.inRange(img_wht, 250, 255)
 
-        #Compute yellow mask
-        lower_ylw = np.array([60,135,50])
-        upper_ylw = np.array([180,155,155])
-        mask_ylw = cv2.inRange(yuv, lower_ylw, upper_ylw)
+        yuv[:,:,0:1]=0
+
+        #Yellow mask
+        kernel = np.ones((5,5),np.float32)/25
+        dst = cv2.filter2D(yuv,-1,kernel)
+        sobelx = np.absolute(cv2.Sobel(yuv[:,:,2], cv2.CV_64F, 1, 0,ksize=5))
+        sobelx[sobelx<200]=0
+        sobelx[sobelx>=200]=255
 
         #Merge mask results
-        mask = mask_wht+mask_ylw
+        mask = mask_wht + sobelx
         return mask
 
     def findLinePoints(self,image):
@@ -148,6 +158,9 @@ class LaneDetector:
                         cv2.circle(blue,(int(r[0]),int(r[1])),1,(255,255,255))
                         points[1].append(r)
 
+        if len(points[0])<10 or len(points[1])<10:
+            self.retry_counter=self.retry_counter+1
+
 
         #Show roi for video frame
         img=cv2.resize(np.dstack((blue,red,red)),(shape[1],int(shape[0])),fx=0,fy=0)
@@ -158,10 +171,8 @@ class LaneDetector:
         '''
         Process video data from file and save result to results dir
         '''
-        self.old_l_x=None
-        self.old_l_y=None
-        self.old_r_x=None
-        self.old_r_y=None
+        print('Video:',fname)
+        self.retry_counter=0
         #Open video
         cap = cv2.VideoCapture(fname)
         # Define the codec and create VideoWriter object
@@ -180,7 +191,12 @@ class LaneDetector:
             ret, img = cap.read()
             if img is None:
                 break
-            res=self.processNextImage(img)
+            if self.retry_counter<self.retry_count:
+                res=self.processNextImage(img)
+            else:
+                self.retry_counter=0
+                print('process as single image')
+                res=self.processSingleImage(img)
             # write result
             video_out.write(res)
             #Show result
@@ -269,22 +285,10 @@ class LaneDetector:
 
             self.all_y=np.array(list(range(warped.shape[0])))
 
-            #Merge last points if not first frame
-            if self.old_l_x is None or self.old_l_y is None or self.old_r_x is None or self.old_r_y is None:
-                self.tl_x=list(leftx)
-                self.tl_y=list(lefty)
-                self.tr_x=list(rightx)
-                self.tr_y=list(righty)
-            else:
-                self.tl_x=list(leftx)+self.old_l_x
-                self.tl_y=list(lefty)+self.old_l_y
-                self.tr_x=list(rightx)+self.old_r_x
-                self.tr_y=list(righty)+self.old_r_y
-
-            self.old_l_x=list(leftx)
-            self.old_l_y=list(lefty)
-            self.old_r_x=list(rightx)
-            self.old_r_y=list(righty)
+            self.tl_x=list(leftx)
+            self.tl_y=list(lefty)
+            self.tr_x=list(rightx)
+            self.tr_y=list(righty)
 
             #convert to numpy
             self.tl_x=np.array(self.tl_x)
@@ -293,14 +297,33 @@ class LaneDetector:
             self.tr_y=np.array(self.tr_y)
 
             # Fit a second order polynomial to each fake lane line
-            self.left_fit = np.array(np.polyfit(self.tl_y, self.tl_x, 2))
+            left_fit = np.array(np.polyfit(self.tl_y, self.tl_x, 2))
+            right_fit = np.array(np.polyfit(self.tr_y, self.tr_x, 2))
+
+            self.left_fit_deque.append(left_fit)
+            if len(self.left_fit_deque)>=self.N_frames:
+                self.left_fit_deque.popleft()
+            self.right_fit_deque.append(right_fit)
+            if len(self.right_fit_deque)>=self.N_frames:
+                self.right_fit_deque.popleft()
+
+
+            self.left_fit=np.array([0,0,0])
+            for v in self.left_fit_deque:
+                self.left_fit = self.left_fit + v
+            self.left_fit=self.left_fit/len(self.left_fit_deque)
+            self.right_fit=np.array([0,0,0])
+            for v in self.right_fit_deque:
+                self.right_fit = self.right_fit + v
+            self.right_fit=self.right_fit/len(self.right_fit_deque)
+
             self.left_fitx = np.array(self.left_fit[0]*self.all_y**2 + self.left_fit[1]*self.all_y + self.left_fit[2])
-            self.right_fit = np.array(np.polyfit(self.tr_y, self.tr_x, 2))
             self.right_fitx = np.array(self.right_fit[0]*self.all_y**2 + self.right_fit[1]*self.all_y + self.right_fit[2])
 
         # Create an image to draw the lines on
         warp_zero = np.zeros_like(warped).astype(np.uint8)
         color_warp = np.dstack((warp_zero, warp_zero, warp_zero))
+
 
         # Recast the x and y points into usable format for cv2.fillPoly()
         pts_left = np.array([np.transpose(np.vstack([self.left_fitx, self.all_y]))])
@@ -342,10 +365,9 @@ class LaneDetector:
         '''
         Process single image or first frame of video.
         '''
-        self.old_l_x=None
-        self.old_l_y=None
-        self.old_r_x=None
-        self.old_r_y=None
+        self.retry_counter=0
+        self.left_fit_deque.clear()
+        self.right_fit_deque.clear()
 
         undist=self.undistort(img)
         self.roi_corners=[[0.16*undist.shape[1],undist.shape[0]],
@@ -360,7 +382,7 @@ class LaneDetector:
             pts = np.array(src, np.int32)
             pts = pts.reshape((-1,1,2))
             cv2.polylines(undist,[pts],True,(0,0,255))
-            cv2.imshow('roi',undist)
+            # cv2.imshow('roi',undist)
 
         #remove top and bottom (sky, car)
         undist_masked=self.removeTopBottom(undist)

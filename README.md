@@ -123,7 +123,9 @@ Binarization is done in following stepd:
   - Leave only G channel
   - Black all values below 250 and set rest to 255
 4. Find yellow lines
-  - Apply mask using `cv2.inRange` from `60, 135, 50` to `180, 155, 155`
+  - Use V from YUV
+  - Blur with 5x5
+  - Apply sobel in x and threshold
 5. Merge results from 3 and 4
 
 ![binary.png](images/binary.png)
@@ -162,6 +164,8 @@ Line fitting for a video frame:
     - If there are points in *left* group:
       - Compute mean
       - Add point to *points*
+
+If there are less than 10 points in left or right line 25 times, single image line fitting is made.
 
 ![lines-video](images/lines-video.png)
 
