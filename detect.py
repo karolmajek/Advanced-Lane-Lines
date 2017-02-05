@@ -6,14 +6,12 @@ import cv2
 import glob
 import json
 
-
+#Load calibration
 calib=dict()
 with open('calib.json', 'r') as f:
     calib=json.load(f)
 calib['matrix']=np.array(calib['matrix'])
 calib['dist']=np.array(calib['dist'])
-
-images=glob.glob('CarND-Advanced-Lane-Lines/test_images/*.jpg')
 
 class LaneDetector:
     """
@@ -48,18 +46,26 @@ class LaneDetector:
         upper_ylw = np.array([180,155,155])
         mask_ylw = cv2.inRange(yuv, lower_ylw, upper_ylw)
 
+        #Merge mask results
         mask = mask_wht+mask_ylw
         return mask
 
     def findLinePoints(self,image):
+        '''
+        Find lane lines points in a single image - slow.
+        '''
         points=([],[])
         shape=image.shape
-        img=cv2.resize(image,(shape[1],int(shape[0])),fx=0,fy=0)
+        img=image.copy()
+        #Prepare images for visualization
         red=np.zeros_like(img)
         green=np.zeros_like(img)
         blue=np.zeros_like(img)
 
+        #Set center to width/2
         center=int(shape[1]/2)
+
+        #For each row starting from bottom
         for yy,line in list(enumerate(image))[::-1]:
             x_val_hist=[]
             counter=0
@@ -70,63 +76,66 @@ class LaneDetector:
             if len(x_val_hist)>0:
                 cv2.circle(green,(int(center),yy),1,(255,255,255))
 
+                #Split to left/right line
                 left=[(x,yy) for x in x_val_hist if x<center]
                 right=[(x,yy) for x in x_val_hist if x>=center]
+
                 if len(left)>0:
+                    #Compute average
                     l=np.mean(np.array(left),axis=0)
                     l=(l[0],l[1])
                     center=l[0]+int(shape[1]*0.2)
-
                     cv2.circle(red,(int(l[0]),int(l[1])),1,(255,255,255))
+                    #Add to points
                     points[0].append(l)
                 if len(right)>0:
+                    #Compute average
                     r=np.mean(np.array(right),axis=0)
                     r=(r[0],r[1])
                     cv2.circle(blue,(int(r[0]),int(r[1])),1,(255,255,255))
+                    #Add to points
                     points[1].append(r)
-        if False:
+        if False: #for debug
             img=cv2.resize(np.dstack((blue,green,red)),(shape[1],int(shape[0])),fx=0,fy=0)
             cv2.imshow('lines',img)
         return points
 
     def findLinePointsFast(self,image):
+        '''
+        Find lane lines points in video frame - fast.
+        Works starting from second frame.
+        '''
         points=([],[])
         shape=image.shape
-        # img=cv2.resize(image,(shape[1],int(shape[0]/10)),fx=0,fy=0)
-        img=cv2.resize(image,(shape[1],int(shape[0])),fx=0,fy=0)
+        #Prepare images for visualization
+
+        img=image.copy()
         red=np.zeros_like(img)
         blue=np.zeros_like(img)
 
-        diff=self.right_fitx[0]-self.left_fitx[0]
-
-        for y,lx,rx,line in list(zip(self.all_y,self.left_fitx,self.right_fitx,image))[::10]:
+        #For every 10th row starting from bottom
+        for y,lx,rx,line in list(zip(self.all_y,self.left_fitx,self.right_fitx,image))[::-10]:
             lxmin=int(lx-20-0.2*(img.shape[0]-y))
             lxmax=int(lx+20+0.2*(img.shape[0]-y))
             rxmin=int(rx-20-0.2*(img.shape[0]-y))
             rxmax=int(rx+20+0.2*(img.shape[0]-y))
             cv2.circle(red,(lxmin,int(y)),1,(255,255,255))
-            # cv2.circle(red,(int(lx),int(y)),1,(255,255,255))
-
             cv2.circle(red,(lxmax,int(y)),1,(255,255,255))
             cv2.circle(red,(rxmin,int(y)),1,(255,255,255))
-            # cv2.circle(red,(int(rx),int(y)),1,(255,255,255))
             cv2.circle(red,(rxmax,int(y)),1,(255,255,255))
-            # if np.count_nonzero(line)>10:
             x_val_hist=[]
             counter=0
             for x in line:
                 if x>0:
                     x_val_hist.append(counter)
                 counter=counter+1
-            # if np.abs(xmax-xmin)>300:
             if len(x_val_hist)>5:
-                xmin=np.min(np.array(x_val_hist))
-                xmax=np.max(np.array(x_val_hist))
-                # center=(xmin+xmax)/2.0
+                #split points to left/right
                 left=[(x,y) for x in x_val_hist if x<=lxmax and x>=lxmin]
                 right=[(x,y) for x in x_val_hist if x>=rxmin and x<=rxmax]
                 l=None
                 r=None
+                #Compute means for left/right
                 if len(left):
                     l=np.mean(np.array(left),axis=0)
                 if len(right):
@@ -135,96 +144,62 @@ class LaneDetector:
                     if (not l is None) and l[0]>lxmin and l[0]<lxmax:
                         cv2.circle(blue,(int(l[0]),int(l[1])),1,(255,255,255))
                         points[0].append(l)
-                        # if y<10:
-                        #     points[1].append((l[0]+diff,l[1]))
                     if (not r is None) and r[0]>rxmin and r[0]<rxmax:
                         cv2.circle(blue,(int(r[0]),int(r[1])),1,(255,255,255))
                         points[1].append(r)
 
+
+        #Show roi for video frame
         img=cv2.resize(np.dstack((blue,red,red)),(shape[1],int(shape[0])),fx=0,fy=0)
-        # img=cv2.resize(np.dstack((blue,img,red)),(shape[1],int(shape[0]/10)),fx=0,fy=0)
-
-
         cv2.imshow('lines-video',img)
-        # cv2.imshow('small',np.dstack((blue,img,red)))
-
-
-
-
-        # for yy,line in enumerate(image):
-        #     if np.count_nonzero(line)>10:
-        #         x_val_hist=[]
-        #         counter=0
-        #         for x in line:
-        #             if x>0:
-        #                 x_val_hist.append(counter)
-        #             counter=counter+1
-        #         xmin=np.min(np.array(x_val_hist))
-        #         xmax=np.max(np.array(x_val_hist))
-        #         if np.abs(xmax-xmin)>300:
-        #             center=(xmin+xmax)/2.0
-        #             left=[(x,yy) for x in x_val_hist if x<center]
-        #             right=[(x,yy) for x in x_val_hist if x>=center]
-        #             for l in left:
-        #                 points[0].append(l)
-        #             for r in right:
-        #                 points[1].append(r)
         return points
 
-    def plotFitted(self,yvals,leftx,rightx):
-        # # Generate some fake data to represent lane-line pixels
-        # yvals = np.linspace(0, 100, num=101)*7.2  # to cover same y-range as image
-        # leftx = np.array([200 + (elem**2)*4e-4 + np.random.randint(-50, high=51)
-        #                               for idx, elem in enumerate(yvals)])
-        # leftx = leftx[::-1]  # Reverse to match top-to-bottom in y
-        # rightx = np.array([900 + (elem**2)*4e-4 + np.random.randint(-50, high=51)
-        #                                 for idx, elem in enumerate(yvals)])
-        # rightx = rightx[::-1]  # Reverse to match top-to-bottom in y
-        # self.left_fit = np.polyfit(yvals, leftx, 2)
-        # self.left_fitx = self.left_fit[0]*yvals**2 + self.left_fit[1]*yvals + self.left_fit[2]
-        # self.right_fit = np.polyfit(yvals, rightx, 2)
-        # self.right_fitx = self.right_fit[0]*yvals**2 + self.right_fit[1]*yvals + self.right_fit[2]
-        # Plot up the fake data
-        # plt.plot(leftx, yvals, 'o', color='red')
-        # plt.plot(rightx, yvals, 'o', color='blue')
-        plt.xlim(0, 1280)
-        plt.ylim(0, 720)
-        plt.plot(self.left_fitx, yvals, color='green', linewidth=3)
-        plt.plot(self.right_fitx, yvals, color='green', linewidth=3)
-        plt.gca().invert_yaxis() # to visualize as we do the images
-        plt.show()
     def processVideo(self,fname):
+        '''
+        Process video data from file and save result to results dir
+        '''
+        self.old_l_x=None
+        self.old_l_y=None
+        self.old_r_x=None
+        self.old_r_y=None
+        #Open video
         cap = cv2.VideoCapture(fname)
-
-        self.old_l_x=[]
-        self.old_l_y=[]
-        self.old_r_x=[]
-        self.old_r_y=[]
+        # Define the codec and create VideoWriter object
+        fourcc = cv2.VideoWriter_fourcc(*'X264')
+        video_out = cv2.VideoWriter('results/'+fname.split('/')[-1],fourcc, 25, (1280,720))
 
         if cap.isOpened():
             ret, img = cap.read()
+            #Process first image as single image
             if not img is None:
                 res=self.processSingleImage(img)
                 cv2.imshow('Result',res)
                 cv2.waitKey(1)
+
         while(cap.isOpened()):
-
-            for ttt in range(1):
-                ret, img = cap.read()
-
+            ret, img = cap.read()
             if img is None:
                 break
-
             res=self.processNextImage(img)
+            # write result
+            video_out.write(res)
+            #Show result
             cv2.imshow('Result',res)
             cv2.waitKey(1)
         cap.release()
+        video_out.release()
         cv2.destroyAllWindows()
 
     def undistort(self,img):
+        '''
+        Undistort image
+        '''
         return cv2.undistort(img,calib['matrix'], calib['dist'], None,None)
 
     def unwarp(self,undist):
+        '''
+        Unwarp image
+        '''
         src = np.float32(self.roi_corners)
 
         offset=100
@@ -239,12 +214,10 @@ class LaneDetector:
         warped_orig = cv2.warpPerspective(undist, self.Mpersp, dsize=warped_size)
         return warped_orig
 
-    def removeNoise(self,img):
-        kernel = np.ones((3,3),np.uint8)
-        res = cv2.erode(img,kernel,iterations = 2)
-        return cv2.dilate(res,kernel,iterations = 2)
-
     def removeTopBottom(self,img):
+        '''
+        Remove (set to black) top and bottom lines of image
+        '''
         res=img.copy()
         #remove car
         res[-int(res.shape[0]*0.1):-1,:,:]=0
@@ -252,9 +225,16 @@ class LaneDetector:
         res[0:int(self.roi_corners[1][1]),:,:]=0
         return res
 
-    def computeCurvatureAndDistance(self,img):
-        # # Define y-value where we want radius of curvature
-        # # I'll choose the maximum y-value, corresponding to the bottom of the image
+    def computeAndShow(self,img):
+        '''
+        Compute parameters:
+        - left line curvature
+        - right line curvature
+        - distance from center
+
+        And render result
+        '''
+        # Define y-value where we want radius of curvature
         y_eval = np.max(self.all_y)
 
         # Define conversions in x and y from pixels space to meters
@@ -269,39 +249,44 @@ class LaneDetector:
         self.left_curverad = ((1 + (2*left_fit_cr[0]*y_eval*ym_per_pix + left_fit_cr[1])**2)**1.5) / np.absolute(2*left_fit_cr[0])
         self.right_curverad = ((1 + (2*right_fit_cr[0]*y_eval*ym_per_pix + right_fit_cr[1])**2)**1.5) / np.absolute(2*right_fit_cr[0])
 
-
         #Distance from center
         img_center=img.shape[1]/2
         lane_center=self.left_fitx[-1]+self.right_fitx[-1]
         diff=lane_center-img_center
         self.diffm=diff*xm_per_pix
 
+        img=cv2.putText(img,'Curvature left: %.1f m'%(self.left_curverad),(50,50), self.font, 1,(255,255,255),2,cv2.LINE_AA)
+        img=cv2.putText(img,'Curvature right: %.1f m'%(self.right_curverad),(50,100), self.font, 1,(255,255,255),2,cv2.LINE_AA)
+        img=cv2.putText(img,'Dist from center: %.1f m'%(self.diffm),(50,150), self.font, 1,(255,255,255),2,cv2.LINE_AA)
 
-    def processNextImage(self,img):
-        undist=self.undistort(img)
-        undist_masked=self.removeTopBottom(undist)
-        warped=self.unwarp(undist_masked)
-        warped=self.mask_lane_lines(warped)
-        # warped=self.removeNoise(warped)
-        points=self.findLinePointsFast(warped)
-        cv2.imshow('warped',warped)
-
+    def fitAndShow(self,warped,undist,points):
+        '''
+        Fit points and show result on image
+        '''
         if len(points[0]) >= 5 and len(points[1])>=5:
             leftx,lefty= zip(*points[0])
             rightx,righty= zip(*points[1])
 
             self.all_y=np.array(list(range(warped.shape[0])))
 
-            self.tl_x=list(leftx)+self.old_l_x
-            self.tl_y=list(lefty)+self.old_l_y
-            self.tr_x=list(rightx)+self.old_r_x
-            self.tr_y=list(righty)+self.old_r_y
+            #Merge last points if not first frame
+            if self.old_l_x is None or self.old_l_y is None or self.old_r_x is None or self.old_r_y is None:
+                self.tl_x=list(leftx)
+                self.tl_y=list(lefty)
+                self.tr_x=list(rightx)
+                self.tr_y=list(righty)
+            else:
+                self.tl_x=list(leftx)+self.old_l_x
+                self.tl_y=list(lefty)+self.old_l_y
+                self.tr_x=list(rightx)+self.old_r_x
+                self.tr_y=list(righty)+self.old_r_y
 
             self.old_l_x=list(leftx)
             self.old_l_y=list(lefty)
             self.old_r_x=list(rightx)
             self.old_r_y=list(righty)
 
+            #convert to numpy
             self.tl_x=np.array(self.tl_x)
             self.tl_y=np.array(self.tl_y)
             self.tr_x=np.array(self.tr_x)
@@ -312,8 +297,6 @@ class LaneDetector:
             self.left_fitx = np.array(self.left_fit[0]*self.all_y**2 + self.left_fit[1]*self.all_y + self.left_fit[2])
             self.right_fit = np.array(np.polyfit(self.tr_y, self.tr_x, 2))
             self.right_fitx = np.array(self.right_fit[0]*self.all_y**2 + self.right_fit[1]*self.all_y + self.right_fit[2])
-
-        # self.plotFitted(self.all_y,leftx,rightx)
 
         # Create an image to draw the lines on
         warp_zero = np.zeros_like(warped).astype(np.uint8)
@@ -329,26 +312,41 @@ class LaneDetector:
 
         # Warp the blank back to original image space using inverse perspective matrix (Minv)
         Minv=np.linalg.inv(self.Mpersp)
-        newwarp = cv2.warpPerspective(color_warp, Minv, (img.shape[1], img.shape[0]))
+        newwarp = cv2.warpPerspective(color_warp, Minv, (undist.shape[1], undist.shape[0]))
 
         # Combine the result with the original image
         result = cv2.addWeighted(undist, 1, newwarp, 0.2, 0)
 
-        unwarped = 255*cv2.warpPerspective(warped, Minv, (img.shape[1], img.shape[0])).astype(np.uint8)
+        unwarped = 255*cv2.warpPerspective(warped, Minv, (undist.shape[1], undist.shape[0])).astype(np.uint8)
         unwarped=np.dstack((np.zeros_like(unwarped),np.zeros_like(unwarped),unwarped))
 
         line_image = cv2.addWeighted(result, 1, unwarped, 1, 0)
+        return result,line_image
 
-        self.computeCurvatureAndDistance(img)
-
-        result=cv2.putText(result,'Curvature left: %.1f m'%(self.left_curverad),(50,50), self.font, 1,(255,255,255),2,cv2.LINE_AA)
-        result=cv2.putText(result,'Curvature right: %.1f m'%(self.right_curverad),(50,100), self.font, 1,(255,255,255),2,cv2.LINE_AA)
-
-        result=cv2.putText(result,'Dist from center: %.1f m'%(self.diffm),(50,150), self.font, 1,(255,255,255),2,cv2.LINE_AA)
+    def processNextImage(self,img):
+        '''
+        Process image using information from previous one to speed up on video.
+        '''
+        undist=self.undistort(img)
+        undist_masked=self.removeTopBottom(undist)
+        warped=self.unwarp(undist_masked)
+        warped=self.mask_lane_lines(warped)
+        points=self.findLinePointsFast(warped)
+        # cv2.imshow('warped',warped)
+        result,_ = self.fitAndShow(warped,undist,points)
+        self.computeAndShow(result)
 
         return result
 
     def processSingleImage(self,img):
+        '''
+        Process single image or first frame of video.
+        '''
+        self.old_l_x=None
+        self.old_l_y=None
+        self.old_r_x=None
+        self.old_r_y=None
+
         undist=self.undistort(img)
         self.roi_corners=[[0.16*undist.shape[1],undist.shape[0]],
                     [0.45*undist.shape[1],0.63*undist.shape[0]],
@@ -364,8 +362,10 @@ class LaneDetector:
             cv2.polylines(undist,[pts],True,(0,0,255))
             cv2.imshow('roi',undist)
 
-
+        #remove top and bottom (sky, car)
         undist_masked=self.removeTopBottom(undist)
+        # cv2.imshow('undist_masked',undist_masked)
+
         #Save before and after undistortion
         if not self.is_distortion_saved:
             dist_before_after=np.concatenate((img,undist), axis=1)
@@ -375,96 +375,42 @@ class LaneDetector:
             cv2.imwrite('images/distortion.jpg',dist_before_after)
             self.is_distortion_saved=True
 
-        cv2.imshow('undist_masked',undist_masked)
         warped=self.unwarp(undist_masked)
-        cv2.imshow('transformed',warped)
+        # cv2.imshow('transformed',warped)
         warped=self.mask_lane_lines(warped)
-        cv2.imshow('binary',warped)
-
-        # warped=self.removeNoise(warped)
+        # cv2.imshow('binary',warped)
         points=self.findLinePoints(warped)
-        cv2.imshow('warped',warped)
-
+        # cv2.imshow('warped',warped)
 
         if len(points[0]) == 0 or len(points[1])==0:
             return img
 
-        leftx,lefty= zip(*points[0])
-        rightx,righty= zip(*points[1])
-
-        self.all_y=np.array(list(range(warped.shape[0])))
-
-        self.tl_x=list(leftx)
-        self.tl_y=list(lefty)
-        self.tr_x=list(rightx)
-        self.tr_y=list(righty)
-
-        self.old_l_x=list(leftx)
-        self.old_l_y=list(lefty)
-        self.old_r_x=list(rightx)
-        self.old_r_y=list(righty)
-
-        self.tl_x=np.array(self.tl_x)
-        self.tl_y=np.array(self.tl_y)
-        self.tr_x=np.array(self.tr_x)
-        self.tr_y=np.array(self.tr_y)
-        # Fit a second order polynomial to each fake lane line
-        self.left_fit = np.array(np.polyfit(self.tl_y, self.tl_x, 2))
-        self.left_fitx = np.array(self.left_fit[0]*self.all_y**2 + self.left_fit[1]*self.all_y + self.left_fit[2])
-        self.right_fit = np.array(np.polyfit(self.tr_y, self.tr_x, 2))
-        self.right_fitx = np.array(self.right_fit[0]*self.all_y**2 + self.right_fit[1]*self.all_y + self.right_fit[2])
-
-        # self.plotFitted(self.all_y,leftx,rightx)
-        # Create an image to draw the lines on
-        warp_zero = np.zeros_like(warped).astype(np.uint8)
-        color_warp = np.dstack((warp_zero, warp_zero, warp_zero))
-
-        # Recast the x and y points into usable format for cv2.fillPoly()
-        pts_left = np.array([np.transpose(np.vstack([self.left_fitx, self.all_y]))])
-        pts_right = np.array([np.flipud(np.transpose(np.vstack([self.right_fitx, self.all_y])))])
-        pts = np.hstack((pts_left, pts_right))
-
-        # Draw the lane onto the warped blank image
-        cv2.fillPoly(color_warp, np.int_([pts]), (0,255, 0))
-
-        # Warp the blank back to original image space using inverse perspective matrix (Minv)
-        Minv=np.linalg.inv(self.Mpersp)
-        newwarp = cv2.warpPerspective(color_warp, Minv, (img.shape[1], img.shape[0]))
-        # Combine the result with the original image
-        result = cv2.addWeighted(undist, 1, newwarp, 0.2, 0)
-        # plt.axes(ax4)
-        # plt.imshow(result)
-
-
-
-        unwarped = 255*cv2.warpPerspective(warped, Minv, (img.shape[1], img.shape[0])).astype(np.uint8)
-        unwarped=np.dstack((np.zeros_like(unwarped),np.zeros_like(unwarped),unwarped))
-
-        line_image = cv2.addWeighted(result, 1, unwarped, 1, 0)
-
-        self.computeCurvatureAndDistance(img)
-
-        result=cv2.putText(result,'Curvature left: %.1f m'%(self.left_curverad),(50,50), self.font, 1,(255,255,255),2,cv2.LINE_AA)
-        result=cv2.putText(result,'Curvature right: %.1f m'%(self.right_curverad),(50,100), self.font, 1,(255,255,255),2,cv2.LINE_AA)
-        result=cv2.putText(result,'Dist from center: %.1f m'%(self.diffm),(50,150), self.font, 1,(255,255,255),2,cv2.LINE_AA)
+        result,_ = self.fitAndShow(warped,undist,points)
+        self.computeAndShow(result)
 
         return result
 
 
 def main():
+    #Create LaneDetector object
     det=LaneDetector()
-    for fimg in images:
+
+    #Process images
+    for fimg in glob.glob('CarND-Advanced-Lane-Lines/test_images/*.jpg'):
         print(fimg.split('/')[-1])
+        #Read image
         img=cv2.imread(fimg)
+        #Do processing
         res=det.processSingleImage(img)
+        #Write result
         cv2.imwrite('results/'+fimg.split('/')[-1],res)
-        cv2.imshow('result',res)
+        #Show result
+        cv2.imshow('Result',res)
         cv2.waitKey(250)
 
-
-    det.processVideo('CarND-Advanced-Lane-Lines/project_video.mp4')
-    det.processVideo('CarND-Advanced-Lane-Lines/challenge_video.mp4')
-    det.processVideo('CarND-Advanced-Lane-Lines/harder_challenge_video.mp4')
+    #Process all videos
+    for fvideo in glob.glob('CarND-Advanced-Lane-Lines/*.mp4'):
+        det.processVideo(fvideo)
 
 if __name__ == '__main__':
     main()

@@ -130,31 +130,52 @@ Binarization is done in following stepd:
 
 ### Line fitting
 
-Line fitting works as follows:
+Line fitting for single image or first frame of video works as follows:
 1. Set `center = width/2`
 2. For each line in image starting from bottom:
-  - Store index of each none zero point in `x_val_hist`
+- Store index of each none zero point in `x_val_hist`
+  - Store in `x_val_hist` index of each none zero point from row
   - If len of `x_val_hist` is greater than 0:
     - Group points to left/right line according to position to `center`
     - If there are points in *left* group:
-      - Compute mean
-      - Add point
-      - Set `center = mean + width*0.2`
+      - Compute average
+      - Add point to *points*
+      - Set `center = average + width*0.2`
     - If there are points in *left* group:
       - Compute mean
-      - Add point
+      - Add point to *points*
+
+Image below shows red, green and blue dots. Red and blue are points for left and right line fitting respectively. Green is the position of `center` which discriminates left from right points.
 
 ![lines](images/lines.png)
 
+Line fitting for a video frame:
+1. For every 10th row of frame starting from bottom:
+  - Compute min, max of ROI for x, for left and right lines to search for points (`lxmin, lxmax, rxmin, rxmax`)
+  - Store in `x_val_hist` index of each none zero point from row
+  - If len of `x_val_hist` is greater than 5:
+    - Group points to left/right line according to position to `lxmin, lxmax` and `rxmin, rxmax`
+    - If there are points in *left* group:
+      - Compute average
+      - Add point to *points*
+      - Set `center = average + width*0.2`
+    - If there are points in *left* group:
+      - Compute mean
+      - Add point to *points*
+
 ![lines-video](images/lines-video.png)
 
-### Calculating radius / curvature
+### Calculating radius / curvature and position
 
-### Calculating position
+All radius/position related computations are made in *computeAndShow* method. Curvature is computed using code from Udacity. Position is obtained by computing the difference between center of image and center of lane in pixels. Then it is converted to meters using pixels to meters factor for x axis.
 
 ## Results
 
+Results are saved into *results* directory.
+
 ### Results on images
+
+Here are results on Udacity sample images.
 
 ![test1.jpg](results/test1.jpg)
 
@@ -174,4 +195,14 @@ Line fitting works as follows:
 
 ### Results on videos
 
+Results for videos are also stored in *results* dir.
+
 ## Discussion
+
+This solution works bad on `harder_challenge_video.mp4`. Pipeline is prepared to work on smaller curvatures. The contrast variations are really challanging and are a problem.
+Improvements:
+- RANSAC can be used to remove outliers to better fit polynomials.
+- Deep net can be used to determine lane like for determining driveable areas of road in [this paper](https://arxiv.org/pdf/1604.02316.pdf)
+- Fine tunning of binarization
+- Support for small radius turns - larger ROI
+- Compare the change of polynomial - reduce jumps
